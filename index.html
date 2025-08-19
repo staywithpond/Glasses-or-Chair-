@@ -45,24 +45,25 @@
 
     let model, webcam, labelContainer, maxPredictions;
 
-    // MQTT configuration
+    // MQTT Configuration (Secure WebSocket)
     const mqttBroker = "wss://broker.hivemq.com:8884/mqtt";
-    const mqttTopic = "teachablemachine/prediction";
+    const mqttTopic = "myhome/camera/prediction";
     let mqttClient;
 
     function connectMQTT() {
       mqttClient = mqtt.connect(mqttBroker);
 
       mqttClient.on("connect", () => {
-        console.log("Connected to MQTT Broker");
+        console.log("Connected to MQTT Broker over WSS");
       });
 
       mqttClient.on("error", (err) => {
         console.error("MQTT Connection Error:", err);
+        document.getElementById("label-container").innerText = "MQTT Error: " + err.message;
       });
     }
 
-    connectMQTT();
+    connectMQTT(); // Connect to MQTT on page load
 
     async function init(facingMode) {
       const modelURL = URL + "model.json";
@@ -137,3 +138,5 @@
   </script>
 </body>
 </html>
+
+
