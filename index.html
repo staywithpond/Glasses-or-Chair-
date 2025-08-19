@@ -2,9 +2,10 @@
 <html>
 <head>
   <title>Teachable Machine Image Model (Mobile)</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"> <!-- ทำ responsive -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -44,6 +45,25 @@
 
     let model, webcam, labelContainer, maxPredictions;
 
+    // MQTT configuration
+    const mqttBroker = "wss://broker.hivemq.com:8884/mqtt";
+    const mqttTopic = "teachablemachine/prediction";
+    let mqttClient;
+
+    function connectMQTT() {
+      mqttClient = mqtt.connect(mqttBroker);
+
+      mqttClient.on("connect", () => {
+        console.log("Connected to MQTT Broker");
+      });
+
+      mqttClient.on("error", (err) => {
+        console.error("MQTT Connection Error:", err);
+      });
+    }
+
+    connectMQTT();
+
     async function init(facingMode) {
       const modelURL = URL + "model.json";
       const metadataURL = URL + "metadata.json";
@@ -51,15 +71,14 @@
       model = await tmImage.load(modelURL, metadataURL);
       maxPredictions = model.getTotalClasses();
 
-      // ตั้งค่า Webcam สำหรับมือถือ โดยระบุ facingMode
-      webcam = new tmImage.Webcam(224, 224, false); // ใช้ 224x224 เหมือนเดิม
+      webcam = new tmImage.Webcam(224, 224, false);
       try {
-        await webcam.setup({ facingMode: facingMode }); // เลือกกล้องหน้า (user) หรือหลัง (environment)
+        await webcam.setup({ facingMode: facingMode });
         await webcam.play();
         if (!webcam.canvas) {
           throw new Error("Webcam canvas is not initialized");
         }
-        console.log("Webcam initialized, width:", webcam.canvas.width, "facingMode:", facingMode);
+        console.log("Webcam initialized, facingMode:", facingMode);
         window.requestAnimationFrame(loop);
       } catch (e) {
         console.error("Webcam setup failed:", e);
@@ -69,7 +88,7 @@
 
       document.getElementById("webcam-container").appendChild(webcam.canvas);
       labelContainer = document.getElementById("label-container");
-      labelContainer.innerHTML = ""; // ล้างผลลัพธ์เก่า
+      labelContainer.innerHTML = "";
       for (let i = 0; i < maxPredictions; i++) {
         labelContainer.appendChild(document.createElement("div"));
       }
@@ -83,9 +102,28 @@
 
     async function predict() {
       const prediction = await model.predict(webcam.canvas);
+      let maxProb = 0;
+      let topClass = "";
+
       for (let i = 0; i < maxPredictions; i++) {
-        const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
+        const className = prediction[i].className;
+        const prob = prediction[i].probability.toFixed(2);
+        const classPrediction = className + ": " + prob;
         labelContainer.childNodes[i].innerHTML = classPrediction;
+
+        if (parseFloat(prob) > maxProb) {
+          maxProb = parseFloat(prob);
+          topClass = className;
+        }
+      }
+
+      if (mqttClient && mqttClient.connected) {
+        const payload = JSON.stringify({
+          label: topClass,
+          probability: maxProb
+        });
+        mqttClient.publish(mqttTopic, payload);
+        console.log("Sent to MQTT:", payload);
       }
     }
 
@@ -98,5 +136,4 @@
     }
   </script>
 </body>
-
 </html>
